@@ -1,25 +1,54 @@
 pipeline {
     agent any
 
+    environment {
+        IMAGE_NAME = "mywebsite"
+        CONTAINER_NAME = "mywebsite-container"
+    }
+
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Source Code') {
             steps {
+                echo "Checking out source code from GitHub..."
                 checkout scm
+            }
+        }
+
+        stage('Verify Workspace') {
+            steps {
+                sh '''
+                    echo "Current Directory:"
+                    pwd
+
+                    echo "Workspace Files:"
+                    ls -la
+
+                    echo "Docker Version:"
+                    docker version
+                '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t mywebsite .'
+                sh '''
+                    export DOCKER_BUILDKIT=0
+
+                    echo "Building Docker Image..."
+
+                    docker build -t ${IMAGE_NAME} .
+                '''
             }
         }
 
-        stage('Stop Old Container') {
+        stage('Stop Existing Container') {
             steps {
                 sh '''
-                docker stop mywebsite-container || true
-                docker rm mywebsite-container || true
+                    echo "Stopping old container if it exists..."
+
+                    docker stop ${CONTAINER_NAME} || true
+                    docker rm ${CONTAINER_NAME} || true
                 '''
             }
         }
@@ -27,28 +56,47 @@ pipeline {
         stage('Run New Container') {
             steps {
                 sh '''
-                docker run -d \
-                --name mywebsite-container \
-                -p 80:80 \
-                mywebsite
+                    echo "Starting new container..."
+
+                    docker run -d \
+                        --name ${CONTAINER_NAME} \
+                        --restart unless-stopped \
+                        -p 80:80 \
+                        ${IMAGE_NAME}
                 '''
             }
         }
 
-        stage('Verify') {
+        stage('Verify Deployment') {
             steps {
-                sh 'docker ps'
+                sh '''
+                    echo "Running Containers:"
+                    docker ps
+
+                    echo "Docker Images:"
+                    docker images
+                '''
             }
         }
     }
 
     post {
         success {
-            echo 'Deployment Successful'
+            echo "===================================="
+            echo "Deployment Successful!"
+            echo "Website is running on Port 80"
+            echo "===================================="
         }
 
         failure {
-            echo 'Deployment Failed'
+            echo "===================================="
+            echo "Deployment Failed!"
+            echo "Check Console Output for details."
+            echo "===================================="
+        }
+
+        always {
+            cleanWs()
         }
     }
 }
